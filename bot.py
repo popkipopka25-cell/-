@@ -2,14 +2,11 @@ import asyncio
 import logging
 import os
 import json
-import re
 import aiohttp
-from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton
+    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -19,7 +16,6 @@ from aiohttp import web
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROUP_ID = int(os.getenv("GROUP_ID"))
 PORT = int(os.getenv("PORT", 10000))
-OWNER_IDS = set(map(int, (os.getenv("OWNER_IDS", "") or "").split(",") if os.getenv("OWNER_IDS") else []))
 JSONBLOB_URL = os.getenv("JSONBLOB_URL", "")
 
 bot = Bot(token=BOT_TOKEN)
@@ -27,7 +23,6 @@ dp = Dispatcher(storage=MemoryStorage())
 
 user_topics = {}
 topic_users = {}
-all_users = set()
 
 class Form(StatesGroup):
     choosing_role = State()
@@ -40,8 +35,6 @@ ROLES = {
     "support": "🛡 Админ общения/поддержки",
 }
 
-# Вопросы с типами проверки
-# type: text, number, yesno, username
 FORMS = {
     "manager": [
         {"q": "1. Ник:", "type": "text"},
@@ -79,7 +72,7 @@ FORMS = {
         {"q": "3. Город и часовой пояс", "type": "text"},
         {"q": "4. Был ли опыт в данной теме?", "type": "text"},
         {"q": "5. Что делали чаще всего: рассылки, прогревы, вовлечение, работа с негативом? (1–2 пункта)", "type": "text"},
-        {"q": "6. Знакомы с лимитами и спам-фильтрами Telegram? Что самое важное, чтобы не улететь в бан?", "type": "text"},
+        {"q": "6. Знакомы с лимитами и спам-фильтрами Telegram?", "type": "text"},
         {"q": "7. Почему вы решили прийти именно к нам?", "type": "text"},
         {"q": "8. В какое время вам будет удобно работать?", "type": "text"},
     ],
@@ -95,11 +88,7 @@ FORMS = {
     ],
 }
 
-WELCOME_TEXT = (
-    "Привет! 👋\n\n"
-    "Я бот для подачи заявки в команду.\n"
-    "Выбери, кем ты хочешь стать:"
-)
+WELCOME_TEXT = "Привет! 👋\n\nВыбери, кем ты хочешь стать:"
 
 def role_keyboard() -> InlineKeyboardMarkup:
     buttons = [[InlineKeyboardButton(text=name, callback_data=f"role_{key}")] for key, name in ROLES.items()]
@@ -116,18 +105,16 @@ async def save_data():
         return
     data = {
         "user_topics": {str(k): v for k, v in user_topics.items()},
-        "all_users": list(all_users),
     }
     try:
         async with aiohttp.ClientSession() as session:
             async with session.put(JSONBLOB_URL, json=data) as resp:
-                if resp.status not in (200, 204):
-                    logging.error(f"Ошибка сохранения: {resp.status}")
+                pass
     except Exception as e:
         logging.error(f"Ошибка сохранения: {e}")
 
 async def load_data():
-    global user_topics, topic_users, all_users
+    global user_topics, topic_users
     if not JSONBLOB_URL:
         return
     try:
@@ -137,28 +124,23 @@ async def load_data():
                     data = await resp.json()
                     user_topics = {int(k): v for k, v in data.get("user_topics", {}).items()}
                     topic_users = {v: k for k, v in user_topics.items()}
-                    all_users = set(map(int, data.get("all_users", [])))
     except Exception as e:
         logging.error(f"Ошибка загрузки: {e}")
 
-def validate_answer(answer_type: str, text: str):
-    """Проверяет ответ. Возвращает True, если ок."""
+def validate_answer(answer_type: str, text: str) -> bool:
     if not text:
         return False
     t = text.strip()
     if answer_type == "number":
         return t.isdigit()
     if answer_type == "yesno":
-        low = t.lower()
-        return low in ["да", "нет", "yes", "no"]
+        return t.lower() in ["да", "нет", "yes", "no"]
     if answer_type == "username":
         return t.startswith("@") and len(t) > 1 and " " not in t
-    return True  # text
+    return True
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
-    all_users.add(message.from_user.id)
-    await save_data()
     await message.answer(WELCOME_TEXT, reply_markup=role_keyboard())
     await state.set_state(Form.choosing_role)
 
@@ -183,20 +165,18 @@ async def process_answer(message: Message, state: FSMContext):
     questions = FORMS[role_key]
     current_q = questions[step]
 
-    # Проверяем ответ (для текстовых только)
     if message.text:
         if not validate_answer(current_q["type"], message.text):
             if current_q["type"] == "number":
-                await message.answer("Пожалуйста, введи только число (например, 16).")
+                await message.answer("Пожалуйста, введи только число.")
             elif current_q["type"] == "yesno":
                 await message.answer("Пожалуйста, ответь «Да» или «Нет».")
             elif current_q["type"] == "username":
-                await message.answer("Юзер должен начинаться с @ и быть без пробелов. Например: @username")
+                await message.answer("Юзер должен начинаться с @ и быть без пробелов.")
             else:
                 await message.answer("Пожалуйста, ответь текстом.")
             return
 
-    # Сохраняем ответ (текст или медиа)
     if message.text:
         answers.append({"type": "text", "content": message.text})
     elif message.photo:
@@ -237,10 +217,9 @@ async def finish_form(message: Message, state: FSMContext):
         topic_users[topic_id] = user_id
         await save_data()
 
-        card = f"🆕 Новая заявка\n👤 Имя: {message.from_user.full_name}\n🔖 Username: @{message.from_user.username or 'нет'}\n📌 Роль: {ROLES[role_key]}\n\n"
+        card = f"🆕 Новая заявка\n👤 {message.from_user.full_name}\n🔖 @{message.from_user.username or 'нет'}\n📌 {ROLES[role_key]}\n\n"
         for i, ans in enumerate(answers, 1):
-            q = FORMS[role_key][i - 1]["q"]
-            card += f"{q}\n➡️ {ans['content']}\n\n"
+            card += f"{FORMS[role_key][i-1]['q']}\n➡️ {ans['content']}\n\n"
 
         await bot.send_message(GROUP_ID, card, message_thread_id=topic_id, reply_markup=get_card_keyboard(user_id))
 
@@ -258,7 +237,7 @@ async def finish_form(message: Message, state: FSMContext):
             elif ans["type"] == "sticker":
                 await bot.send_sticker(GROUP_ID, ans["content"], message_thread_id=topic_id)
 
-        await message.answer("Спасибо! Твоя анкета отправлена. Администратор скоро свяжется с тобой в этом чате.")
+        await message.answer("Спасибо! Анкета отправлена. Админ скоро свяжется с тобой.")
     except Exception as e:
         logging.error(f"Не удалось создать тему: {e}")
         await message.answer("Произошла ошибка при отправке анкеты. Попробуй позже.")
@@ -274,7 +253,7 @@ async def handle_user_message(message: Message, state: FSMContext):
 
     user_id = message.from_user.id
     if user_id not in user_topics:
-        await message.answer("Пожалуйста, начни с /start и выбери роль.")
+        await message.answer("Начни с /start и выбери роль.")
         return
     topic_id = user_topics[user_id]
 
@@ -296,13 +275,16 @@ async def handle_user_message(message: Message, state: FSMContext):
     except Exception as e:
         logging.error(f"Ошибка пересылки: {e}")
 
+# ---------- Сообщения из группы (админы) ----------
 @dp.message(F.chat.id == GROUP_ID)
 async def handle_admin_message(message: Message):
+    # Пропускаем сообщения от ботов и команды
     if message.from_user is None or message.from_user.is_bot:
         return
     if message.text and message.text.startswith('/'):
         return
-    if not message.message_thread_id:
+    # Только темы
+    if message.message_thread_id is None:
         return
 
     topic_id = message.message_thread_id
@@ -310,6 +292,7 @@ async def handle_admin_message(message: Message):
     if not user_id:
         return
 
+    # Игнорируем внутренние заметки
     if message.text and message.text.startswith("//"):
         return
 
@@ -331,7 +314,6 @@ async def handle_admin_message(message: Message):
     except Exception as e:
         logging.error(f"Ошибка отправки пользователю {user_id}: {e}")
 
-# ---------- Кнопки ----------
 @dp.callback_query(F.data.startswith("block:"))
 async def process_block(callback: CallbackQuery):
     await callback.answer("Пользователь заблокирован (демо).")
@@ -345,7 +327,6 @@ async def process_read(callback: CallbackQuery):
         pass
     await callback.answer("Отмечено как прочитано")
 
-# ---------- Запуск ----------
 async def main():
     logging.basicConfig(level=logging.INFO)
     await load_data()
