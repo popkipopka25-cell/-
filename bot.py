@@ -34,10 +34,10 @@ class Form(StatesGroup):
 
 
 ROLES = {
-    "manager": "📢 Менеджер ТГК",
-    "video": "🎬 Видеомонтажёр",
-    "sender": "📨 Рассыльщик",
-    "support": "🛡 Админ общения/поддержки",
+    "manager": "Менеджер ТГК",
+    "video": "Видеомонтажер",
+    "sender": "Рассыльщик",
+    "support": "Админ общения/поддержки",
 }
 
 FORMS = {
@@ -62,7 +62,7 @@ FORMS = {
         {"q": "1. Ваше имя", "type": "text"},
         {"q": "2. Ваш возраст", "type": "number"},
         {"q": "3. Часовой пояс", "type": "text"},
-        {"q": "4. Почему решили стать видеомонтажёром?", "type": "text"},
+        {"q": "4. Почему решили стать видеомонтажером?", "type": "text"},
         {"q": "5. Сколько занимаетесь монтажом?", "type": "text"},
         {"q": "6. С какими программами работаете?", "type": "text"},
         {"q": "7. Что чаще монтируете?", "type": "text"},
@@ -93,7 +93,7 @@ FORMS = {
     ],
 }
 
-WELCOME_TEXT = "Привет! 👋\n\nВыбери, кем ты хочешь стать:"
+WELCOME_TEXT = "Привет! Выбери, кем ты хочешь стать:"
 
 
 def role_keyboard() -> InlineKeyboardMarkup:
@@ -107,18 +107,17 @@ def get_card_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                Inline[KeyboardButton(text="🔒 Заблокировать", callbackrole_data=f"block:{user_id}"),
-                Inline_keyKeyboardButton(text="✅ Прочитать", callback_data]
-=f"read:{user_id}"),
+                InlineKeyboardButton(text="Заблокировать", callback_data=f"block:{user_id}"),
+                InlineKeyboardButton(text="Прочитать", callback_data=f"read:{user_id}"),
             ]
-           ]
+        ]
     )
 
 
 async def save_data():
- current    if not JSONBLOB_URL:
+    if not JSONBLOB_URL:
         return
-_q    data = {"user_topics": {str(k): v for k, v in user_topics.items()}}
+    data = {"user_topics": {str(k): v for k, v in user_topics.items()}}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.put(JSONBLOB_URL, json=data) as resp:
@@ -181,14 +180,15 @@ async def process_answer(message: Message, state: FSMContext):
     role_key = data.get("role")
     step = data.get("step", 0)
     answers = data.get("answers", [])
-    questions = FORMS = questions[step]
+    questions = FORMS[role_key]
+    current_q = questions[step]
 
     if message.text:
         if not validate_answer(current_q["type"], message.text):
             if current_q["type"] == "number":
                 await message.answer("Пожалуйста, введи только число.")
             elif current_q["type"] == "yesno":
-                await message.answer("Пожалуйста, ответь «Да» или «Нет».")
+                await message.answer("Пожалуйста, ответь Да или Нет.")
             elif current_q["type"] == "username":
                 await message.answer("Юзер должен начинаться с @ и быть без пробелов.")
             else:
@@ -237,14 +237,14 @@ async def finish_form(message: Message, state: FSMContext):
         await save_data()
 
         card = (
-            f"🆕 Новая заявка\n"
-            f"👤 {message.from_user.full_name}\n"
-            f"🔖 @{message.from_user.username or 'нет'}\n"
-            f"📌 {ROLES[role_key]}\n\n"
+            f"Новая заявка\n"
+            f"Имя: {message.from_user.full_name}\n"
+            f"Username: @{message.from_user.username or 'нет'}\n"
+            f"Роль: {ROLES[role_key]}\n\n"
         )
         for i, ans in enumerate(answers):
             q = FORMS[role_key][i]["q"]
-            card += f"{q}\n➡️ {ans['content']}\n\n"
+            card += f"{q}\n-> {ans['content']}\n\n"
 
         await bot.send_message(
             GROUP_ID,
@@ -292,19 +292,9 @@ async def handle_user_message(message: Message, state: FSMContext):
         if message.text:
             await bot.send_message(GROUP_ID, message.text, message_thread_id=topic_id)
         elif message.photo:
-            await bot.send_photo(
-                GROUP_ID,
-                message.photo[-1].file_id,
-                caption=message.caption,
-                message_thread_id=topic_id,
-            )
+            await bot.send_photo(GROUP_ID, message.photo[-1].file_id, caption=message.caption, message_thread_id=topic_id)
         elif message.video:
-            await bot.send_video(
-                GROUP_ID,
-                message.video.file_id,
-                caption=message.caption,
-                message_thread_id=topic_id,
-            )
+            await bot.send_video(GROUP_ID, message.video.file_id, caption=message.caption, message_thread_id=topic_id)
         elif message.voice:
             await bot.send_voice(GROUP_ID, message.voice.file_id, message_thread_id=topic_id)
         elif message.video_note:
