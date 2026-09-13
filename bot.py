@@ -3,10 +3,13 @@ import logging
 import os
 import json
 import aiohttp
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -24,9 +27,11 @@ dp = Dispatcher(storage=MemoryStorage())
 user_topics = {}
 topic_users = {}
 
+
 class Form(StatesGroup):
     choosing_role = State()
     answering = State()
+
 
 ROLES = {
     "manager": "📢 Менеджер ТГК",
@@ -46,11 +51,11 @@ FORMS = {
         {"q": "7. Сможете регулярно выкладывать посты? (Да/Нет)", "type": "yesno"},
         {"q": "8. Сможете соблюдать стиль и правила канала? (Да/Нет)", "type": "yesno"},
         {"q": "9. Что будете делать, если случайно выложили неправильный пост?", "type": "text"},
-        {"q": "10. Готовы отвечать за свои публикации и исправлять ошибки? (Да/Нет)", "type": "yesno"},
+        {"q": "10. Готовы отвечать за свои публикации? (Да/Нет)", "type": "yesno"},
         {"q": "11. Будете ли использовать должность в личных целях? (Да/Нет)", "type": "yesno"},
         {"q": "12. Почему именно вас стоит взять?", "type": "text"},
         {"q": "13. Ваш юз (начинается с @):", "type": "username"},
-        {"q": "14. Готовы соблюдать правила администрации и выполнять обязанности менеджера? (Да/Нет)", "type": "yesno"},
+        {"q": "14. Готовы соблюдать правила администрации? (Да/Нет)", "type": "yesno"},
         {"q": "15. Готовы пройти испытательный срок? (Да/Нет)", "type": "yesno"},
     ],
     "video": [
@@ -58,23 +63,23 @@ FORMS = {
         {"q": "2. Ваш возраст", "type": "number"},
         {"q": "3. Часовой пояс", "type": "text"},
         {"q": "4. Почему решили стать видеомонтажёром?", "type": "text"},
-        {"q": "5. Сколько недель/месяцев/лет занимаетесь монтажом видео?", "type": "text"},
-        {"q": "6. С какими программами для видеомонтажа вы работаете?", "type": "text"},
-        {"q": "7. Что чаще монтируете? (ролики/рекламу/клипы и т.д.)", "type": "text"},
-        {"q": "8. Делаете ли цветокоррекцию и обработку звука? (да/нет)", "type": "yesno"},
-        {"q": "9. Есть ли навыки анимации или моушн-графики? (да/нет)", "type": "yesno"},
-        {"q": "10. Сколько времени понадобится вам для видеомонтажа?", "type": "text"},
-        {"q": "11. Скиньте 3 видео своих работ (можно ссылками или файлами).", "type": "text"},
+        {"q": "5. Сколько занимаетесь монтажом?", "type": "text"},
+        {"q": "6. С какими программами работаете?", "type": "text"},
+        {"q": "7. Что чаще монтируете?", "type": "text"},
+        {"q": "8. Делаете цветокоррекцию и обработку звука? (да/нет)", "type": "yesno"},
+        {"q": "9. Есть навыки анимации или моушн-графики? (да/нет)", "type": "yesno"},
+        {"q": "10. Сколько времени понадобится на монтаж?", "type": "text"},
+        {"q": "11. Скиньте 3 видео работ.", "type": "text"},
     ],
     "sender": [
         {"q": "1. Имя", "type": "text"},
         {"q": "2. Telegram юз (начинается с @)", "type": "username"},
         {"q": "3. Город и часовой пояс", "type": "text"},
         {"q": "4. Был ли опыт в данной теме?", "type": "text"},
-        {"q": "5. Что делали чаще всего: рассылки, прогревы, вовлечение, работа с негативом? (1–2 пункта)", "type": "text"},
-        {"q": "6. Знакомы с лимитами и спам-фильтрами Telegram?", "type": "text"},
-        {"q": "7. Почему вы решили прийти именно к нам?", "type": "text"},
-        {"q": "8. В какое время вам будет удобно работать?", "type": "text"},
+        {"q": "5. Что делали чаще всего?", "type": "text"},
+        {"q": "6. Знакомы с лимитами Telegram?", "type": "text"},
+        {"q": "7. Почему пришли именно к нам?", "type": "text"},
+        {"q": "8. В какое время удобно работать?", "type": "text"},
     ],
     "support": [
         {"q": "1. Имя", "type": "text"},
@@ -82,36 +87,45 @@ FORMS = {
         {"q": "3. Ваш юз (начинается с @)", "type": "username"},
         {"q": "4. Часовой пояс", "type": "text"},
         {"q": "5. Был ли опыт в общении/поддержке?", "type": "text"},
-        {"q": "6. Как вы реагируете на конфликтные ситуации?", "type": "text"},
-        {"q": "7. Сколько времени готовы уделять работе?", "type": "text"},
-        {"q": "8. Почему выбрали именно это направление?", "type": "text"},
+        {"q": "6. Как реагируете на конфликты?", "type": "text"},
+        {"q": "7. Сколько времени готовы уделять?", "type": "text"},
+        {"q": "8. Почему выбрали это направление?", "type": "text"},
     ],
 }
 
 WELCOME_TEXT = "Привет! 👋\n\nВыбери, кем ты хочешь стать:"
 
+
 def role_keyboard() -> InlineKeyboardMarkup:
-    buttons = [[InlineKeyboardButton(text=name, callback_data=f"role_{key}")] for key, name in ROLES.items()]
+    buttons = []
+    for key, name in ROLES.items():
+        buttons.append([InlineKeyboardButton(text=name, callback_data=f"role_{key}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+
 def get_card_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🔒 Заблокировать", callback_data=f"block:{user_id}"),
-        InlineKeyboardButton(text="✅ Прочитать", callback_data=f"read:{user_id}")
-    ]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                Inline[KeyboardButton(text="🔒 Заблокировать", callbackrole_data=f"block:{user_id}"),
+                Inline_keyKeyboardButton(text="✅ Прочитать", callback_data]
+=f"read:{user_id}"),
+            ]
+           ]
+    )
+
 
 async def save_data():
-    if not JSONBLOB_URL:
+ current    if not JSONBLOB_URL:
         return
-    data = {
-        "user_topics": {str(k): v for k, v in user_topics.items()},
-    }
+_q    data = {"user_topics": {str(k): v for k, v in user_topics.items()}}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.put(JSONBLOB_URL, json=data) as resp:
-                pass
+                _ = resp.status
     except Exception as e:
         logging.error(f"Ошибка сохранения: {e}")
+
 
 async def load_data():
     global user_topics, topic_users
@@ -127,6 +141,7 @@ async def load_data():
     except Exception as e:
         logging.error(f"Ошибка загрузки: {e}")
 
+
 def validate_answer(answer_type: str, text: str) -> bool:
     if not text:
         return False
@@ -139,10 +154,13 @@ def validate_answer(answer_type: str, text: str) -> bool:
         return t.startswith("@") and len(t) > 1 and " " not in t
     return True
 
+
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
     await message.answer(WELCOME_TEXT, reply_markup=role_keyboard())
     await state.set_state(Form.choosing_role)
+
 
 @dp.callback_query(F.data.startswith("role_"))
 async def process_role(callback: CallbackQuery, state: FSMContext):
@@ -156,14 +174,14 @@ async def process_role(callback: CallbackQuery, state: FSMContext):
     await state.set_state(Form.answering)
     await callback.answer()
 
+
 @dp.message(Form.answering)
 async def process_answer(message: Message, state: FSMContext):
     data = await state.get_data()
     role_key = data.get("role")
     step = data.get("step", 0)
     answers = data.get("answers", [])
-    questions = FORMS[role_key]
-    current_q = questions[step]
+    questions = FORMS = questions[step]
 
     if message.text:
         if not validate_answer(current_q["type"], message.text):
@@ -203,6 +221,7 @@ async def process_answer(message: Message, state: FSMContext):
         await state.update_data(answers=answers)
         await finish_form(message, state)
 
+
 async def finish_form(message: Message, state: FSMContext):
     data = await state.get_data()
     role_key = data.get("role")
@@ -217,11 +236,22 @@ async def finish_form(message: Message, state: FSMContext):
         topic_users[topic_id] = user_id
         await save_data()
 
-        card = f"🆕 Новая заявка\n👤 {message.from_user.full_name}\n🔖 @{message.from_user.username or 'нет'}\n📌 {ROLES[role_key]}\n\n"
-        for i, ans in enumerate(answers, 1):
-            card += f"{FORMS[role_key][i-1]['q']}\n➡️ {ans['content']}\n\n"
+        card = (
+            f"🆕 Новая заявка\n"
+            f"👤 {message.from_user.full_name}\n"
+            f"🔖 @{message.from_user.username or 'нет'}\n"
+            f"📌 {ROLES[role_key]}\n\n"
+        )
+        for i, ans in enumerate(answers):
+            q = FORMS[role_key][i]["q"]
+            card += f"{q}\n➡️ {ans['content']}\n\n"
 
-        await bot.send_message(GROUP_ID, card, message_thread_id=topic_id, reply_markup=get_card_keyboard(user_id))
+        await bot.send_message(
+            GROUP_ID,
+            card,
+            message_thread_id=topic_id,
+            reply_markup=get_card_keyboard(user_id),
+        )
 
         for ans in answers:
             if ans["type"] == "photo":
@@ -244,7 +274,7 @@ async def finish_form(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
-# ---------- Пересылка ----------
+
 @dp.message(F.chat.type == "private")
 async def handle_user_message(message: Message, state: FSMContext):
     current_state = await state.get_state()
@@ -255,15 +285,26 @@ async def handle_user_message(message: Message, state: FSMContext):
     if user_id not in user_topics:
         await message.answer("Начни с /start и выбери роль.")
         return
+
     topic_id = user_topics[user_id]
 
     try:
         if message.text:
             await bot.send_message(GROUP_ID, message.text, message_thread_id=topic_id)
         elif message.photo:
-            await bot.send_photo(GROUP_ID, message.photo[-1].file_id, caption=message.caption, message_thread_id=topic_id)
+            await bot.send_photo(
+                GROUP_ID,
+                message.photo[-1].file_id,
+                caption=message.caption,
+                message_thread_id=topic_id,
+            )
         elif message.video:
-            await bot.send_video(GROUP_ID, message.video.file_id, caption=message.caption, message_thread_id=topic_id)
+            await bot.send_video(
+                GROUP_ID,
+                message.video.file_id,
+                caption=message.caption,
+                message_thread_id=topic_id,
+            )
         elif message.voice:
             await bot.send_voice(GROUP_ID, message.voice.file_id, message_thread_id=topic_id)
         elif message.video_note:
@@ -273,17 +314,15 @@ async def handle_user_message(message: Message, state: FSMContext):
         elif message.sticker:
             await bot.send_sticker(GROUP_ID, message.sticker.file_id, message_thread_id=topic_id)
     except Exception as e:
-        logging.error(f"Ошибка пересылки: {e}")
+        logging.error(f"Ошибка пересылки от пользователя: {e}")
 
-# ---------- Сообщения из группы (админы) ----------
+
 @dp.message(F.chat.id == GROUP_ID)
 async def handle_admin_message(message: Message):
-    # Пропускаем сообщения от ботов и команды
     if message.from_user is None or message.from_user.is_bot:
         return
-    if message.text and message.text.startswith('/'):
+    if message.text and message.text.startswith("/"):
         return
-    # Только темы
     if message.message_thread_id is None:
         return
 
@@ -292,7 +331,6 @@ async def handle_admin_message(message: Message):
     if not user_id:
         return
 
-    # Игнорируем внутренние заметки
     if message.text and message.text.startswith("//"):
         return
 
@@ -314,34 +352,39 @@ async def handle_admin_message(message: Message):
     except Exception as e:
         logging.error(f"Ошибка отправки пользователю {user_id}: {e}")
 
+
 @dp.callback_query(F.data.startswith("block:"))
 async def process_block(callback: CallbackQuery):
     await callback.answer("Пользователь заблокирован (демо).")
+
 
 @dp.callback_query(F.data.startswith("read:"))
 async def process_read(callback: CallbackQuery):
     user_id = int(callback.data.split(":")[1])
     try:
         await bot.send_message(user_id, "Твоя анкета рассмотрена, скоро с тобой свяжутся.")
-    except:
+    except Exception:
         pass
     await callback.answer("Отмечено как прочитано")
+
 
 async def main():
     logging.basicConfig(level=logging.INFO)
     await load_data()
     await bot.delete_webhook(drop_pending_updates=True)
+
     polling_task = asyncio.create_task(dp.start_polling(bot))
 
     app = web.Application()
-    app.router.add_get('/', lambda request: web.Response(text="Bot is running"))
+    app.router.add_get("/", lambda request: web.Response(text="Bot is running"))
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
     logging.info(f"Web server started on port {PORT}")
 
     await polling_task
+
 
 if __name__ == "__main__":
     asyncio.run(main())
