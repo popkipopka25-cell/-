@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import json
+import re
 import aiohttp
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
@@ -24,15 +25,14 @@ JSONBLOB_URL = os.getenv("JSONBLOB_URL", "")
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-user_topics = {}   # user_id -> topic_id
-topic_users = {}   # topic_id -> user_id
+user_topics = {}
+topic_users = {}
 all_users = set()
 
 class Form(StatesGroup):
     choosing_role = State()
     answering = State()
 
-# Список ролей
 ROLES = {
     "manager": "📢 Менеджер ТГК",
     "video": "🎬 Видеомонтажёр",
@@ -40,57 +40,58 @@ ROLES = {
     "support": "🛡 Админ общения/поддержки",
 }
 
-# Анкеты по ролям (список вопросов)
+# Вопросы с типами проверки
+# type: text, number, yesno, username
 FORMS = {
     "manager": [
-        "1. Ник:",
-        "2. Возраст:",
-        "3. Был ли опыт ведения ТГК? (Да/Нет)",
-        "4. Умеете оформлять посты? (Да/Нет)",
-        "5. Умеете работать с фото, видео и текстом? (Да/Нет)",
-        "6. Сколько времени готовы уделять каналу?",
-        "7. Сможете регулярно выкладывать посты? (Да/Нет)",
-        "8. Сможете соблюдать стиль и правила канала? (Да/Нет)",
-        "9. Что будете делать, если случайно выложили неправильный пост?",
-        "10. Готовы отвечать за свои публикации и исправлять ошибки? (Да/Нет)",
-        "11. Будете ли использовать должность в личных целях? (Да/Нет)",
-        "12. Почему именно вас стоит взять?",
-        "13. Ваш юз:",
-        "14. Готовы соблюдать правила администрации и выполнять обязанности менеджера? (Да/Нет)",
-        "15. Готовы пройти испытательный срок? (Да/Нет)",
+        {"q": "1. Ник:", "type": "text"},
+        {"q": "2. Возраст:", "type": "number"},
+        {"q": "3. Был ли опыт ведения ТГК? (Да/Нет)", "type": "yesno"},
+        {"q": "4. Умеете оформлять посты? (Да/Нет)", "type": "yesno"},
+        {"q": "5. Умеете работать с фото, видео и текстом? (Да/Нет)", "type": "yesno"},
+        {"q": "6. Сколько времени готовы уделять каналу?", "type": "text"},
+        {"q": "7. Сможете регулярно выкладывать посты? (Да/Нет)", "type": "yesno"},
+        {"q": "8. Сможете соблюдать стиль и правила канала? (Да/Нет)", "type": "yesno"},
+        {"q": "9. Что будете делать, если случайно выложили неправильный пост?", "type": "text"},
+        {"q": "10. Готовы отвечать за свои публикации и исправлять ошибки? (Да/Нет)", "type": "yesno"},
+        {"q": "11. Будете ли использовать должность в личных целях? (Да/Нет)", "type": "yesno"},
+        {"q": "12. Почему именно вас стоит взять?", "type": "text"},
+        {"q": "13. Ваш юз (начинается с @):", "type": "username"},
+        {"q": "14. Готовы соблюдать правила администрации и выполнять обязанности менеджера? (Да/Нет)", "type": "yesno"},
+        {"q": "15. Готовы пройти испытательный срок? (Да/Нет)", "type": "yesno"},
     ],
     "video": [
-        "1. Ваше имя",
-        "2. Ваш возраст",
-        "3. Часовой пояс",
-        "4. Почему решили стать видеомонтажёром?",
-        "5. Сколько недель/месяцев/лет занимаетесь монтажом видео?",
-        "6. С какими программами для видеомонтажа вы работаете?",
-        "7. Что чаще монтируете? (ролики/рекламу/клипы и т.д.)",
-        "8. Делаете ли цветокоррекцию и обработку звука? (да/нет, если да — насколько уверенно)",
-        "9. Есть ли навыки анимации или моушн-графики? (да/нет)",
-        "10. Сколько времени понадобится вам для видеомонтажа?",
-        "11. Скиньте 3 видео своих работ (можно ссылками или файлами).",
+        {"q": "1. Ваше имя", "type": "text"},
+        {"q": "2. Ваш возраст", "type": "number"},
+        {"q": "3. Часовой пояс", "type": "text"},
+        {"q": "4. Почему решили стать видеомонтажёром?", "type": "text"},
+        {"q": "5. Сколько недель/месяцев/лет занимаетесь монтажом видео?", "type": "text"},
+        {"q": "6. С какими программами для видеомонтажа вы работаете?", "type": "text"},
+        {"q": "7. Что чаще монтируете? (ролики/рекламу/клипы и т.д.)", "type": "text"},
+        {"q": "8. Делаете ли цветокоррекцию и обработку звука? (да/нет)", "type": "yesno"},
+        {"q": "9. Есть ли навыки анимации или моушн-графики? (да/нет)", "type": "yesno"},
+        {"q": "10. Сколько времени понадобится вам для видеомонтажа?", "type": "text"},
+        {"q": "11. Скиньте 3 видео своих работ (можно ссылками или файлами).", "type": "text"},
     ],
     "sender": [
-        "1. Имя",
-        "2. Telegram юз",
-        "3. Город и часовой пояс",
-        "4. Был ли опыт в данной теме?",
-        "5. Что делали чаще всего: рассылки, прогревы, вовлечение, работа с негативом? (1–2 пункта)",
-        "6. Знакомы с лимитами и спам-фильтрами Telegram? Что самое важное, чтобы не улететь в бан?",
-        "7. Почему вы решили прийти именно к нам?",
-        "8. В какое время вам будет удобно работать?",
+        {"q": "1. Имя", "type": "text"},
+        {"q": "2. Telegram юз (начинается с @)", "type": "username"},
+        {"q": "3. Город и часовой пояс", "type": "text"},
+        {"q": "4. Был ли опыт в данной теме?", "type": "text"},
+        {"q": "5. Что делали чаще всего: рассылки, прогревы, вовлечение, работа с негативом? (1–2 пункта)", "type": "text"},
+        {"q": "6. Знакомы с лимитами и спам-фильтрами Telegram? Что самое важное, чтобы не улететь в бан?", "type": "text"},
+        {"q": "7. Почему вы решили прийти именно к нам?", "type": "text"},
+        {"q": "8. В какое время вам будет удобно работать?", "type": "text"},
     ],
     "support": [
-        "1. Имя",
-        "2. Возраст",
-        "3. Ваш юз",
-        "4. Часовой пояс",
-        "5. Был ли опыт в общении/поддержке?",
-        "6. Как вы реагируете на конфликтные ситуации?",
-        "7. Сколько времени готовы уделять работе?",
-        "8. Почему выбрали именно это направление?",
+        {"q": "1. Имя", "type": "text"},
+        {"q": "2. Возраст", "type": "number"},
+        {"q": "3. Ваш юз (начинается с @)", "type": "username"},
+        {"q": "4. Часовой пояс", "type": "text"},
+        {"q": "5. Был ли опыт в общении/поддержке?", "type": "text"},
+        {"q": "6. Как вы реагируете на конфликтные ситуации?", "type": "text"},
+        {"q": "7. Сколько времени готовы уделять работе?", "type": "text"},
+        {"q": "8. Почему выбрали именно это направление?", "type": "text"},
     ],
 }
 
@@ -140,6 +141,20 @@ async def load_data():
     except Exception as e:
         logging.error(f"Ошибка загрузки: {e}")
 
+def validate_answer(answer_type: str, text: str):
+    """Проверяет ответ. Возвращает True, если ок."""
+    if not text:
+        return False
+    t = text.strip()
+    if answer_type == "number":
+        return t.isdigit()
+    if answer_type == "yesno":
+        low = t.lower()
+        return low in ["да", "нет", "yes", "no"]
+    if answer_type == "username":
+        return t.startswith("@") and len(t) > 1 and " " not in t
+    return True  # text
+
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     all_users.add(message.from_user.id)
@@ -155,7 +170,7 @@ async def process_role(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(role=role_key, step=0, answers=[])
     await callback.message.edit_text(f"Ты выбрал: {ROLES[role_key]}\n\nНачинаем анкету.")
-    await callback.message.answer(FORMS[role_key][0])
+    await callback.message.answer(FORMS[role_key][0]["q"])
     await state.set_state(Form.answering)
     await callback.answer()
 
@@ -166,8 +181,22 @@ async def process_answer(message: Message, state: FSMContext):
     step = data.get("step", 0)
     answers = data.get("answers", [])
     questions = FORMS[role_key]
+    current_q = questions[step]
 
-    # Сохраняем ответ — текст, фото, видео, голос, кружок, документ, стикер
+    # Проверяем ответ (для текстовых только)
+    if message.text:
+        if not validate_answer(current_q["type"], message.text):
+            if current_q["type"] == "number":
+                await message.answer("Пожалуйста, введи только число (например, 16).")
+            elif current_q["type"] == "yesno":
+                await message.answer("Пожалуйста, ответь «Да» или «Нет».")
+            elif current_q["type"] == "username":
+                await message.answer("Юзер должен начинаться с @ и быть без пробелов. Например: @username")
+            else:
+                await message.answer("Пожалуйста, ответь текстом.")
+            return
+
+    # Сохраняем ответ (текст или медиа)
     if message.text:
         answers.append({"type": "text", "content": message.text})
     elif message.photo:
@@ -183,14 +212,14 @@ async def process_answer(message: Message, state: FSMContext):
     elif message.sticker:
         answers.append({"type": "sticker", "content": message.sticker.file_id})
     else:
-        answers.append({"type": "text", "content": "—"})
+        await message.answer("Пожалуйста, ответь текстом или медиа.")
+        return
 
     step += 1
     if step < len(questions):
         await state.update_data(step=step, answers=answers)
-        await message.answer(questions[step])
+        await message.answer(questions[step]["q"])
     else:
-        # анкета завершена
         await state.update_data(answers=answers)
         await finish_form(message, state)
 
@@ -201,7 +230,6 @@ async def finish_form(message: Message, state: FSMContext):
     user_id = message.from_user.id
     username = message.from_user.username or f"id{user_id}"
 
-    # создаём тему
     try:
         topic = await bot.create_forum_topic(chat_id=GROUP_ID, name=f"{username}")
         topic_id = topic.message_thread_id
@@ -209,15 +237,13 @@ async def finish_form(message: Message, state: FSMContext):
         topic_users[topic_id] = user_id
         await save_data()
 
-        # отправляем карточку
         card = f"🆕 Новая заявка\n👤 Имя: {message.from_user.full_name}\n🔖 Username: @{message.from_user.username or 'нет'}\n📌 Роль: {ROLES[role_key]}\n\n"
         for i, ans in enumerate(answers, 1):
-            q = FORMS[role_key][i - 1]
+            q = FORMS[role_key][i - 1]["q"]
             card += f"{q}\n➡️ {ans['content']}\n\n"
 
         await bot.send_message(GROUP_ID, card, message_thread_id=topic_id, reply_markup=get_card_keyboard(user_id))
 
-        # отправляем медиа отдельными сообщениями
         for ans in answers:
             if ans["type"] == "photo":
                 await bot.send_photo(GROUP_ID, ans["content"], message_thread_id=topic_id)
@@ -239,10 +265,9 @@ async def finish_form(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
-# ---------- Пересылка сообщений ----------
+# ---------- Пересылка ----------
 @dp.message(F.chat.type == "private")
 async def handle_user_message(message: Message, state: FSMContext):
-    # Если пользователь в процессе анкеты — не пересылаем
     current_state = await state.get_state()
     if current_state is not None:
         return
@@ -286,7 +311,7 @@ async def handle_admin_message(message: Message):
         return
 
     if message.text and message.text.startswith("//"):
-        return  # внутренняя заметка
+        return
 
     try:
         if message.text:
@@ -304,12 +329,11 @@ async def handle_admin_message(message: Message):
         elif message.sticker:
             await bot.send_sticker(user_id, message.sticker.file_id)
     except Exception as e:
-        logging.error(f"Ошибка отправки пользователю: {e}")
+        logging.error(f"Ошибка отправки пользователю {user_id}: {e}")
 
-# ---------- Кнопки блокировки/прочтения ----------
+# ---------- Кнопки ----------
 @dp.callback_query(F.data.startswith("block:"))
 async def process_block(callback: CallbackQuery):
-    user_id = int(callback.data.split(":")[1])
     await callback.answer("Пользователь заблокирован (демо).")
 
 @dp.callback_query(F.data.startswith("read:"))
